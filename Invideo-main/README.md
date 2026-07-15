@@ -1,2 +1,0 @@
-# sentiview
-sentiment analysis

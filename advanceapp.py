@@ -155,11 +155,11 @@ def summarize_youtube_video(url, llm, target_lang="auto"):
     try:
         video_id = extract_video_id(url)
         if not video_id:
-            return "❌ Could not extract a valid video ID."
+            return " Could not extract a valid video ID."
 
         text = fetch_transcript(video_id, target_lang)
         if not text:
-            return "❌ Could not retrieve a transcript or captions."
+            return " Could not retrieve a transcript or captions."
 
         docs = [Document(page_content=text)]
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200)
@@ -188,7 +188,7 @@ Summary:""",
 
         return summary
     except Exception as e:
-        return f"⚠️ Error while summarizing: {e}"
+        return f" Error while summarizing: {e}"
 
 # ------------------- Streamlit UI ------------------- #
 st.title("🎬 INVIDEO Analyzer")
