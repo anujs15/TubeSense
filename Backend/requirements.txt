@@ -7,11 +7,14 @@ uvicorn
 
 langchain
 langchain-core
-langchain-mistralai
-langchain-google-genai
 python-dotenv
 langchain-community
 langchain-tavily
+langchain-anthropic
+langchain-huggingface
+langchain-text-splitters 
+langchain-google-genai
+
 pydantic
 langgraph
 joblib
@@ -22,5 +25,4 @@ faiss-cpu>=1.12.0
 
 pypdf>=6.0.0
 
-# Google Generative AI SDK for image generation
-google-genai>=2.0.0
+

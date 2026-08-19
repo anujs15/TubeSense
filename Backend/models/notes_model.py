@@ -65,6 +65,31 @@ class GlobalImagePlan(BaseModel):
     md_with_placeholders: str
     images: List[ImageSpec] = Field(default_factory=list)
 
+
+# ---- Lean image planning schema ----
+# Unlike GlobalImagePlan, this does NOT ask the model to echo the whole blog back
+# (md_with_placeholders). Re-emitting a 3-5k word document just to insert 3 markers
+# is one of the biggest latency costs in the notes pipeline. Instead the model only
+# picks WHICH section each image illustrates (by index) and describes it; the
+# placeholders are inserted in Python, so the notes text is preserved byte-for-byte.
+class ImagePlanItem(BaseModel):
+    section_index: int = Field(
+        ...,
+        description="0-based index of the section (from the numbered SECTIONS list) this image illustrates.",
+    )
+    filename: str = Field(..., description="Bare filename to save under images/, e.g. qkv_flow.png")
+    alt: str
+    caption: str
+    prompt: str = Field(..., description="Prompt to send to the image model.")
+    size: Literal["1024x1024", "1024x1536", "1536x1024"] = "1024x1024"
+    quality: Literal["low", "medium", "high"] = "medium"
+
+
+class ImagePlan(BaseModel):
+    images: List[ImagePlanItem] = Field(
+        default_factory=list, description="0 to 3 images; empty list if none are needed."
+    )
+
 class State(TypedDict):
     topic: str
 

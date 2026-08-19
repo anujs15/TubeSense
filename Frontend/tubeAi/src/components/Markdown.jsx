@@ -1,16 +1,6 @@
 import { useMemo, useState } from 'react'
 import { resolveAsset } from '../config'
 
-/*
- * A small, dependency-free Markdown renderer.
- *
- * It intentionally covers exactly what the backend notes writer emits:
- * headings, paragraphs, bullet / numbered lists, fenced code blocks,
- * blockquotes (used for the "image generation failed" fallback), GFM tables,
- * images with captions, and inline bold / italic / code / links.
- */
-
-// ---- inline ----------------------------------------------------------------
 
 const INLINE_PATTERNS = [
   { type: 'code', re: /`([^`]+)`/ },
@@ -169,7 +159,6 @@ function parseBlocks(md) {
       continue
     }
 
-    // GFM table: header row followed by a separator row
     if (
       line.includes('|') &&
       i + 1 < lines.length &&

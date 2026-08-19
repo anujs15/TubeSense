@@ -2,15 +2,13 @@
 
 from models.notes_model import  Task, Plan, EvidenceItem
 from langchain_core.messages import SystemMessage, HumanMessage
-from langchain.chat_models import init_chat_model
+from llm_config import make_chat_model
 from dotenv import load_dotenv
 
 
 load_dotenv()
 
-#llm = init_chat_model("google_genai:gemini-2.5-flash-lite", timeout=30)
-llm = init_chat_model("mistralai:mistral-medium-latest", timeout=30)
-
+llm = make_chat_model()
 
 WORKER_SYSTEM = """You are a senior technical writer and developer advocate.
 Write ONE section of a technical blog post in Markdown.
@@ -45,6 +43,9 @@ def worker_node(payload: dict) -> dict:
         for e in evidence[:20]
     )
 
+    # Opus can return `.content` as a list of content blocks (not a plain str)
+    # for longer generations, which breaks `.content.strip()`. `.text` is the
+    # LangChain property that always flattens the message to a string.
     section_md = llm.invoke(
         [
             SystemMessage(content=WORKER_SYSTEM),
@@ -70,6 +71,6 @@ def worker_node(payload: dict) -> dict:
                 )
             ),
         ]
-    ).content.strip()
+    ).text.strip()
 
     return {"sections": [(task.id, section_md)]}

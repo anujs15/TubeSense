@@ -7,12 +7,14 @@ from pathlib import Path
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import StreamingResponse
 
 from controllers.youtube_controllers import (
     videoLoad as youtube_video_load,
     QAWithAi as chat_with_ai,
     analyzeSentiment as analyze_sentiment,
     makeNotes,
+    makeNotesStream,
 )
 from models.chatmodel import ChatModel
 from models.uploadModel import UploadModel
@@ -41,10 +43,24 @@ async def make_notes():
     return  await makeNotes()
 
 
+@router.get("/make_notes/stream")
+async def make_notes_stream():
+    
+    generator = await makeNotesStream()
+    return StreamingResponse(
+        generator,
+        media_type="application/x-ndjson",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  
+        },
+    )
+
+
 app = FastAPI(title="Tube Analyzer API")
 
-# NOTE: allow_origins=["*"] is permissive for local development.
-# Restrict this to your frontend's origin(s) before deploying.
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -55,9 +71,7 @@ app.add_middleware(
 
 app.include_router(router)
 
-# The notes writer saves generated images under ./images (see
-# utils/note_decideImage.py) and references them in markdown as
-# `images/<file>.png`. Serve that directory so the frontend can render them.
+
 _images_dir = Path(__file__).resolve().parent / "images"
 _images_dir.mkdir(exist_ok=True)
 app.mount("/images", StaticFiles(directory=str(_images_dir)), name="images")

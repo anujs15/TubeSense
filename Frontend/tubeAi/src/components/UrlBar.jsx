@@ -1,7 +1,6 @@
 import { useState } from 'react'
 
-// A few common YouTube URL shapes -> video id, so we can validate before
-// hitting the backend and give instant feedback.
+
 function extractVideoId(url) {
   if (!url) return null
   const patterns = [

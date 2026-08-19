@@ -1,4 +1,3 @@
-// Shows the currently loaded video: thumbnail + transcript / comment status.
 export default function VideoCard({ content }) {
   if (!content) return null
 

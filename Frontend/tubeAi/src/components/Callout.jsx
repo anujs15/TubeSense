@@ -1,4 +1,3 @@
-// Small inline banner for errors / info / empty states.
 export default function Callout({ tone = 'info', title, children }) {
   const icon = tone === 'error' ? '⚠' : tone === 'success' ? '✓' : 'ℹ'
   return (

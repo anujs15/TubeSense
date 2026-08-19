@@ -1,11 +1,12 @@
 # utils/notes_Websearch.py
 
 import os
-from langchain_community.tools.tavily_search import TavilySearchResults
+from concurrent.futures import ThreadPoolExecutor
+from langchain_tavily import TavilySearch
 from models.notes_model import  State,EvidencePack
 from typing import List, Optional
 from datetime import date, timedelta
-from langchain.chat_models import init_chat_model
+from llm_config import make_chat_model
 from dotenv import load_dotenv
 from langchain_core.messages import SystemMessage, HumanMessage
 
@@ -14,8 +15,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 load_dotenv()
 
 
-#llm = init_chat_model("google_genai:gemini-2.5-flash-lite", timeout=30)
-llm = init_chat_model("mistralai:mistral-medium-latest", timeout=30)
+llm = make_chat_model()
 
 
 def _tavily_search(query: str, max_results: int = 5) -> List[dict]:
@@ -23,7 +23,7 @@ def _tavily_search(query: str, max_results: int = 5) -> List[dict]:
         return []
     try:
          
-        tool = TavilySearchResults(max_results=max_results)
+        tool = TavilySearch(max_results=max_results)
         results = tool.invoke({"query": query})
         out: List[dict] = []
         for r in results or []:
@@ -62,9 +62,12 @@ def _iso_to_date(s: Optional[str]) -> Optional[date]:
     
 def research_node(state: State) -> dict:
     queries = (state.get("queries") or [])[:10]
+
     raw: List[dict] = []
-    for q in queries:
-        raw.extend(_tavily_search(q, max_results=6))
+    if queries:
+        with ThreadPoolExecutor(max_workers=len(queries)) as ex:
+            for hits in ex.map(lambda q: _tavily_search(q, max_results=6), queries):
+                raw.extend(hits)
 
     if not raw:
         return {"evidence": []}

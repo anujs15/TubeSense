@@ -1,8 +1,8 @@
 #services/Aichat_service.py
 
-from langchain.chat_models import init_chat_model
+from llm_config import make_chat_model
 from dotenv import load_dotenv
-from langchain_community.document_loaders import PyPDFLoader, TextLoader
+from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
@@ -14,13 +14,15 @@ from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
 from langgraph.prebuilt import ToolNode, tools_condition
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
+
 from database.database import database
 
 load_dotenv()
 
 #llm = init_chat_model("google_genai:gemini-2.5-flash-lite", timeout=30)
 
-llm = init_chat_model("mistralai:mistral-medium-latest", timeout=30)
+llm = make_chat_model()
+
 
 embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")
 
@@ -70,8 +72,6 @@ tools = [rag_tool]
 llm_with_tools = llm.bind_tools(tools)
 
 
-# Instruct the model to answer from the loaded transcript via the RAG tool,
-# instead of asking the user to paste the transcript (it's already stored).
 CHAT_SYSTEM_PROMPT = (
     "You are a helpful assistant for a YouTube video. The video's transcript "
     "is already stored and searchable through the `rag_tool`. To answer any "
@@ -85,6 +85,7 @@ CHAT_SYSTEM_PROMPT = (
 
 class ChatState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
+    
 def chat_node(state: ChatState):
 
     messages = state['messages']
@@ -122,4 +123,5 @@ async def chatwithAi(user_query: str) -> str:
     }
   )
 
-  return result['messages'][-1].content
+  
+  return result['messages'][-1].text

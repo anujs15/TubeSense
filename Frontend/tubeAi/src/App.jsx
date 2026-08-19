@@ -15,9 +15,7 @@ const TABS = [
 ]
 
 export default function App() {
-  // `content` is only set after a successful /analyze — it is THE gate.
-  // Until then the workspace (notes / sentiment / chat) stays locked, so we
-  // never call analyze_sentiment or make_notes against an empty backend store.
+ 
   const [content, setContent] = useState(null)
   const [analyzing, setAnalyzing] = useState(false)
   const [error, setError] = useState('')
@@ -34,7 +32,7 @@ export default function App() {
       setTab('notes')
     } catch (e) {
       setError(e.message)
-      setContent(null) // a failed re-analyze re-locks the workspace
+      setContent(null) 
     } finally {
       setAnalyzing(false)
     }

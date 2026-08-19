@@ -2,11 +2,13 @@
 
 import logging
 
+from fastapi import HTTPException
+
 from database.database import database
 from services.comment_services import CommentService
 from services.transcript_services import get_transcript
 from utils.youtube import extract_video_id
-
+from services.make_summary import summarize_transcript
 logger = logging.getLogger(__name__)
 
 
@@ -23,7 +25,11 @@ class YouTubeService:
 
     def VideoDataLoaded(self, url: str, lang:str):
 
-        video_id = extract_video_id(url)
+        try:
+            video_id = extract_video_id(url)
+        except ValueError as exc:
+            
+            raise HTTPException(status_code=400, detail=str(exc))
 
         transcript = get_transcript(video_id)
 
@@ -45,18 +51,23 @@ class YouTubeService:
             "comments": comments,
         }
 
-        # Only overwrite the stored transcript when the fetch actually returned one.
-        # A failed fetch (rate-limited / blocked / unavailable) returns no transcript,
-        # and we must not wipe a transcript that was already stored in the database.
         fetched_transcript = transcript.get("transcript")
-        if fetched_transcript and str(fetched_transcript).strip():
-            content["transcript"] = fetched_transcript
+        if not fetched_transcript or not str(fetched_transcript).strip():
+
+            raise HTTPException(
+                status_code=422,
+                detail="This video has no captions/subtitles, so a transcript couldn't be "
+                       "extracted. Try a video that has captions.",
+            )
+        content["transcript"] = fetched_transcript
+
+        summary = summarize_transcript(content["transcript"])
+        content["summary"] = summary
 
         database.update(content)
 
         return { "message": "transcript and Comment of video is loaded", "content":content }
 
     
-
 
 

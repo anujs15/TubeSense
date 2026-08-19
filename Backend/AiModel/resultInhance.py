@@ -1,6 +1,6 @@
 # AiModel/resultInhance.py
 
-from langchain.chat_models import init_chat_model
+from llm_config import make_chat_model
 from langchain_core.messages import SystemMessage, HumanMessage
 from dotenv import load_dotenv
 
@@ -10,7 +10,7 @@ load_dotenv()
 
 
 #llm = init_chat_model("google_genai:gemini-2.5-flash-lite", timeout=30)
-base_llm = init_chat_model("mistralai:mistral-medium-latest", timeout=30)
+base_llm = make_chat_model()
 
 structured_llm = base_llm.with_structured_output(ChatResponseModel)
 

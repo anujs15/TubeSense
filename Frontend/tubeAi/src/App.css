@@ -600,6 +600,25 @@
   }
 }
 
+/* Streaming progress line — status row shown above the live notes preview
+   while sections stream in (spinner + humanized stage text). */
+.notes-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-soft);
+  font-size: 0.9rem;
+}
+.notes-progress .spinner {
+  flex: none;
+  color: var(--accent);
+}
+
 /* ============================================================
    Sentiment card
    ============================================================ */
