@@ -139,7 +139,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
-        "https://tube-sense.vercel.app/"
+        "https://tube-sense.vercel.app"
     ],
     allow_credentials=True,
     allow_methods=["*"],
