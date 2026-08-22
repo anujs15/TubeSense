@@ -71,7 +71,6 @@ function renderInline(text, keyPrefix = 'i') {
   return nodes
 }
 
-// ---- block parsing ---------------------------------------------------------
 
 const RE = {
   heading: /^(#{1,6})\s+(.*)$/,
@@ -181,7 +180,6 @@ function parseBlocks(md) {
       continue
     }
 
-    // lists (unordered or ordered)
     if (RE.ul.test(line) || RE.ol.test(line)) {
       const ordered = RE.ol.test(line)
       const marker = ordered ? RE.ol : RE.ul
@@ -191,7 +189,6 @@ function parseBlocks(md) {
         const m = lines[i].match(itemRe)
         const itemLines = [m[1]]
         i++
-        // soft-wrapped continuation lines (indented, not a new item/block)
         while (
           i < lines.length &&
           lines[i].trim() !== '' &&
@@ -208,7 +205,6 @@ function parseBlocks(md) {
       continue
     }
 
-    // standalone image, optionally followed by an italic caption line
     const img = line.trim().match(RE.imageOnly)
     if (img) {
       let caption = ''

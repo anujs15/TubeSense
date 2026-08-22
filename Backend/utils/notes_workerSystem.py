@@ -43,9 +43,7 @@ def worker_node(payload: dict) -> dict:
         for e in evidence[:20]
     )
 
-    # Opus can return `.content` as a list of content blocks (not a plain str)
-    # for longer generations, which breaks `.content.strip()`. `.text` is the
-    # LangChain property that always flattens the message to a string.
+   
     section_md = llm.invoke(
         [
             SystemMessage(content=WORKER_SYSTEM),

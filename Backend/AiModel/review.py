@@ -8,7 +8,7 @@ import re
 
 import joblib
 
-from database.database import database
+from database.database import sessions_col
 from AiModel.resultInhance import inhanceByai
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -49,11 +49,13 @@ def _clean_text(text: Any) -> str:
     return text.lower()
 
 
-def get_youtube_comments() -> list[dict]:
-    if not isinstance(database, dict):
+def get_youtube_comments(session_id: str) -> list[dict]:
+    session = sessions_col().find_one({"_id": session_id})
+    if not session:
         return []
 
-    comments = database.get("comments", [])
+    video = session.get("video") or {}
+    comments = video.get("comments", [])
     if isinstance(comments, list):
         return comments
 
@@ -109,12 +111,10 @@ def analyze_sentiments(comments: list[Any]):
         return results
 
 
-def summarize_comment_feedback() -> str:
+def summarize_comment_feedback(session_id: str) -> str:
 
-    comments = get_youtube_comments()
+    comments = get_youtube_comments(session_id)
 
-    # No comments -> nothing to analyze. Return early instead of asking the LLM
-    # to summarize an empty result (which makes it emit un-parseable output).
     if not comments:
         return "No feedback — this video has no comments available to analyze."
 

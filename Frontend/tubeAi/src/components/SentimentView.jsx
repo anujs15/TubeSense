@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { analyzeSentiment } from '../api'
 import Callout from './Callout'
 
-export default function SentimentView({ commentCount = 0 }) {
+export default function SentimentView({ sessionId, commentCount = 0 }) {
   const [feedback, setFeedback] = useState('')
   const [status, setStatus] = useState('idle') // idle | loading | done | error
   const [error, setError] = useState('')
@@ -15,7 +15,7 @@ export default function SentimentView({ commentCount = 0 }) {
     setStatus('loading')
     setError('')
     try {
-      const result = await analyzeSentiment()
+      const result = await analyzeSentiment(sessionId)
       setFeedback(typeof result === 'string' ? result : JSON.stringify(result))
       setStatus('done')
     } catch (e) {

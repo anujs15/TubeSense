@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { makeNotesStream } from '../api'
+import { makeNotesStream, downloadNotesPdf } from '../api'
 import Markdown from './Markdown'
 import Callout from './Callout'
 
@@ -12,15 +12,19 @@ const STAGE_LABELS = {
   finalizing: 'Finalizing…',
 }
 
-export default function NotesView() {
-  const [status, setStatus] = useState('idle') 
+export default function NotesView({ sessionId, initialNotes = '' }) {
+  // Seed from the session's saved notes so reopening a chat shows them straight
+  // away (instead of the idle empty state).
+  const [status, setStatus] = useState(initialNotes ? 'done' : 'idle')
   const [error, setError] = useState('')
   const [stage, setStage] = useState('')
   const [stageDetail, setStageDetail] = useState('')
   const [blogTitle, setBlogTitle] = useState('')
-  const [outline, setOutline] = useState([]) 
-  const [sectionsById, setSectionsById] = useState({}) 
-  const [finalMd, setFinalMd] = useState('')
+  const [outline, setOutline] = useState([])
+  const [sectionsById, setSectionsById] = useState({})
+  const [finalMd, setFinalMd] = useState(initialNotes || '')
+  const [downloading, setDownloading] = useState(false)
+  const [dlError, setDlError] = useState('')
 
   const abortRef = useRef(null)
 
@@ -60,7 +64,7 @@ export default function NotesView() {
               break
           }
         },
-        { signal: controller.signal },
+        { signal: controller.signal, sessionId },
       )
       if (controller.signal.aborted) return
       setFinalMd(md)
@@ -101,14 +105,24 @@ export default function NotesView() {
     return stageDetail ? `${base} (${stageDetail})` : base
   }, [outline.length, written, total, stage, stageDetail])
 
-  const download = () => {
-    const blob = new Blob([downloadSource], { type: 'text/markdown;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'notes.md'
-    a.click()
-    URL.revokeObjectURL(url)
+  const download = async () => {
+    if (!sessionId || downloading) return
+    setDownloading(true)
+    setDlError('')
+    try {
+      // The server renders the PDF from the notes markdown stored in MongoDB.
+      const blob = await downloadNotesPdf(sessionId)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'notes.pdf'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      setDlError(e.message || 'Could not download the PDF.')
+    } finally {
+      setDownloading(false)
+    }
   }
 
   return (
@@ -123,8 +137,13 @@ export default function NotesView() {
         </div>
         <div className="view-actions">
           {status === 'done' && downloadSource && (
-            <button type="button" className="btn btn-ghost" onClick={download}>
-              Download .md
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={download}
+              disabled={downloading}
+            >
+              {downloading ? 'Preparing PDF…' : 'Download PDF'}
             </button>
           )}
           <button
@@ -150,6 +169,12 @@ export default function NotesView() {
       {status === 'error' && (
         <Callout tone="error" title="Couldn’t generate notes">
           {error}
+        </Callout>
+      )}
+
+      {dlError && (
+        <Callout tone="error" title="Couldn’t download PDF">
+          {dlError}
         </Callout>
       )}
 

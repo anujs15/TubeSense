@@ -8,8 +8,8 @@ const SUGGESTIONS = [
   'Explain the main concept simply',
 ]
 
-export default function ChatView() {
-  const [messages, setMessages] = useState([])
+export default function ChatView({ sessionId, initialMessages = [] }) {
+  const [messages, setMessages] = useState(initialMessages)
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const scrollRef = useRef(null)
@@ -26,7 +26,7 @@ export default function ChatView() {
     setMessages((m) => [...m, { role: 'user', content: query }])
     setSending(true)
     try {
-      const reply = await chat(query)
+      const reply = await chat(query, sessionId)
       setMessages((m) => [...m, { role: 'ai', content: String(reply) }])
     } catch (e) {
       setMessages((m) => [...m, { role: 'error', content: e.message }])

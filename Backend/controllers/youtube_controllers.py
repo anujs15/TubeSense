@@ -1,14 +1,17 @@
 # controllers/youtube_controller.py
 
 import json
+import re
 
 from fastapi import HTTPException
 
+from auth.deps import require_session
 from services.Aichat_service import chatwithAi
 from services.youtube_services import YouTubeService
+from services import session_service
 from AiModel.review import summarize_comment_feedback
 from services.notes_service import run_note_writer, run_note_writer_stream
-from database.database import database
+from services.pdf_service import notes_markdown_to_pdf
 
 
 
@@ -26,10 +29,11 @@ def _status_for(message: str) -> int:
     return 500
 
 
-async def videoLoad(url: str, lang:str):
+async def videoLoad(url: str, lang: str, session_id: str, user: dict):
 
     try:
-        return service.VideoDataLoaded(url,lang)
+        require_session(session_id, user)  # 404/403 if not the caller's session
+        return service.VideoDataLoaded(url, lang, session_id)
 
     except HTTPException:
 
@@ -42,10 +46,13 @@ async def videoLoad(url: str, lang:str):
         )
 
 
-async def QAWithAi(user_query:str):
+async def QAWithAi(session_id: str, user_query: str, user: dict):
     try:
-        return await chatwithAi(user_query)
+        require_session(session_id, user)
+        return await chatwithAi(session_id, user_query)
 
+    except HTTPException:
+        raise
     except Exception as e:
         message = str(e)
         raise HTTPException(
@@ -54,12 +61,14 @@ async def QAWithAi(user_query:str):
         )
 
 
-async def analyzeSentiment():
+async def analyzeSentiment(session_id: str, user: dict):
     try:
-        # summarize_comment_feedback is synchronous (returns a str), so we must
-        # not await it — doing so raises "'str' object can't be awaited".
-        return summarize_comment_feedback()
+        require_session(session_id, user)
+       
+        return summarize_comment_feedback(session_id)
 
+    except HTTPException:
+        raise
     except Exception as e:
         message = str(e)
         raise HTTPException(
@@ -67,14 +76,12 @@ async def analyzeSentiment():
             detail=message,
         )
 
-async def makeNotes():
+
+async def makeNotes(session_id: str, user: dict):
     try:
-        # Notes are generated from the video's summary (produced during
-        # /youtube/analyze), NOT the raw transcript — the summary is a cleaner,
-        # shorter seed for the notes writer. Require it: no video analyzed yet
-        # (or a restart wiped the in-memory store) means there's nothing to
-        # write about, so fail early with an actionable message.
-        summary = database.get("summary")
+       
+        session = require_session(session_id, user)
+        summary = (session.get("video") or {}).get("summary")
         if not summary or not str(summary).strip():
             raise HTTPException(
                 status_code=400,
@@ -82,7 +89,17 @@ async def makeNotes():
                        "notes are generated from its summary.",
             )
 
-        return await run_note_writer(topic=summary)
+        result = await run_note_writer(topic=summary)
+
+       
+        try:
+            final_md = result.get("final") if isinstance(result, dict) else None
+            if final_md:
+                session_service.save_notes(session_id, final_md)
+        except Exception:
+            pass
+
+        return result
 
     except HTTPException:
         raise
@@ -94,7 +111,7 @@ async def makeNotes():
         )
 
 
-async def makeNotesStream():
+async def makeNotesStream(session_id: str, user: dict):
     """NDJSON streaming variant of makeNotes.
 
     Same summary precondition as makeNotes, but instead of blocking for the whole
@@ -102,13 +119,14 @@ async def makeNotesStream():
     (see run_note_writer_stream) so the UI can render the outline and each section
     as they arrive.
 
-    The 400 "no video" precondition is raised synchronously — BEFORE the generator
-    is returned — so the route surfaces it as a normal JSON error with the right
-    status. Runtime failures happen after the 200 response stream is already open,
-    so they cannot be an HTTP status; they are emitted as a terminal
-    {"type":"error","detail","status"} event instead.
+    The 400 "no video" precondition — and the 404/403 ownership checks — are
+    raised synchronously BEFORE the generator is returned, so the route surfaces
+    them as normal JSON errors with the right status. Runtime failures happen
+    after the 200 response stream is already open, so they cannot be an HTTP
+    status; they are emitted as a terminal {"type":"error",...} event instead.
     """
-    summary = database.get("summary")
+    session = require_session(session_id, user)
+    summary = (session.get("video") or {}).get("summary")
     if not summary or not str(summary).strip():
         raise HTTPException(
             status_code=400,
@@ -119,6 +137,14 @@ async def makeNotesStream():
     async def event_stream():
         try:
             async for event in run_note_writer_stream(topic=summary):
+                
+                if isinstance(event, dict) and event.get("type") == "final":
+                    md = event.get("markdown")
+                    if md:
+                        try:
+                            session_service.save_notes(session_id, md)
+                        except Exception:
+                            pass
                 yield json.dumps(event, ensure_ascii=False) + "\n"
         except Exception as e:
             message = str(e)
@@ -128,3 +154,35 @@ async def makeNotesStream():
             ) + "\n"
 
     return event_stream()
+
+
+async def notesPdf(session_id: str, user: dict):
+    """Render the session's stored notes markdown to a downloadable PDF.
+
+    Notes live in MongoDB (``sessions.notes_markdown``); this reads that markdown
+    and converts it to PDF bytes server-side (see ``services.pdf_service``).
+    Returns ``(pdf_bytes, filename)`` for the route to stream back.
+    """
+    try:
+        session = require_session(session_id, user)
+        md = session.get("notes_markdown")
+        if not md or not str(md).strip():
+            raise HTTPException(
+                status_code=400,
+                detail="No notes yet. Generate notes first, then download.",
+            )
+
+        title = (session.get("title") or "notes").strip() or "notes"
+        pdf_bytes = notes_markdown_to_pdf(md, title=title)
+
+        slug = re.sub(r"[^A-Za-z0-9._-]+", "_", title).strip("_") or "notes"
+        return pdf_bytes, f"{slug}.pdf"
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        message = str(e)
+        raise HTTPException(
+            status_code=_status_for(message),
+            detail=message,
+        )

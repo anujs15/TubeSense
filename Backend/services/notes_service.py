@@ -21,15 +21,6 @@ from utils.notes_workerSystem import worker_node
 
 load_dotenv()
 
-# ============================================================
-# Blog Writer (Router → (Research?) → Orchestrator → Workers → ReducerWithImages)
-# Patches image capability using your 3-node reducer flow:
-#   merge_content -> decide_images -> generate_and_place_images
-# ============================================================
-
-
-
-
 def fanout(state: State):
     assert state["plan"] is not None
     return [
@@ -73,9 +64,7 @@ reducer_graph.add_edge("decide_images", "generate_and_place_images")
 reducer_graph.add_edge("generate_and_place_images", END)
 reducer_subgraph = reducer_graph.compile()
 
-# -----------------------------
-# Build main graph
-# -----------------------------
+
 g = StateGraph(State)
 g.add_node("router", router_node)
 g.add_node("research", research_node)
@@ -104,16 +93,13 @@ async def run_note_writer(topic: str) -> dict:
 
     state = {
         "topic": topic,
-        # routing / research defaults (router_node overrides these)
         "mode": "closed_book",
         "needs_research": False,
         "queries": [],
         "evidence": [],
         "plan": None,
-        # recency: as_of must be a valid ISO date for the router/research nodes
         "as_of": date.today().isoformat(),
         "recency_days": 3650,
-        # worker accumulator
         "sections": [],
     }
 

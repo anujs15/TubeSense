@@ -4,7 +4,7 @@ import logging
 
 from fastapi import HTTPException
 
-from database.database import database
+from services import session_service
 from services.comment_services import CommentService
 from services.transcript_services import get_transcript
 from utils.youtube import extract_video_id
@@ -23,12 +23,12 @@ class YouTubeService:
 
         return self._comment_service
 
-    def VideoDataLoaded(self, url: str, lang:str):
+    def VideoDataLoaded(self, url: str, lang: str, session_id: str):
 
         try:
             video_id = extract_video_id(url)
         except ValueError as exc:
-            
+
             raise HTTPException(status_code=400, detail=str(exc))
 
         transcript = get_transcript(video_id)
@@ -64,7 +64,10 @@ class YouTubeService:
         summary = summarize_transcript(content["transcript"])
         content["summary"] = summary
 
-        database.update(content)
+        # Persist into this user's session (was: a shared global dict). The
+        # retriever cache is keyed by session, so re-analyzing a *new* video
+        # under a fresh session id never collides with an existing one.
+        session_service.save_video(session_id, content, title=video_id)
 
         return { "message": "transcript and Comment of video is loaded", "content":content }
 

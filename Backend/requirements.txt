@@ -25,4 +25,15 @@ faiss-cpu>=1.12.0
 
 pypdf>=6.0.0
 
+# --- persistence + auth ---
+pymongo>=4.12,<4.17
+langgraph-checkpoint-mongodb
+langchain-mongodb>=0.8.0
+PyJWT
+
+# --- cloud media + PDF export ---
+cloudinary
+Markdown
+xhtml2pdf
+
 

@@ -1,5 +1,15 @@
-import { useState } from 'react'
-import { analyzeVideo } from './api'
+import { useEffect, useRef, useState } from 'react'
+import {
+  analyzeVideo,
+  listSessions,
+  createSession,
+  getSession,
+  renameSession,
+  deleteSession,
+} from './api'
+import { useAuth } from './context/AuthContext'
+import AuthScreen from './components/AuthScreen'
+import Sidebar from './components/Sidebar'
 import UrlBar from './components/UrlBar'
 import VideoCard from './components/VideoCard'
 import NotesView from './components/NotesView'
@@ -14,122 +24,326 @@ const TABS = [
   { id: 'chat', label: 'Chat', icon: '🤖' },
 ]
 
+// Backend chat history uses role 'assistant'; ChatView renders 'ai'.
+function mapMessages(messages) {
+  return (messages || []).map((m) => ({
+    role: m.role === 'assistant' ? 'ai' : m.role,
+    content: m.content,
+  }))
+}
+
 export default function App() {
- 
+  const { user, loading: authLoading, logout } = useAuth()
+
+  // sidebar / session list
+  const [sessions, setSessions] = useState([])
+  const [currentSessionId, setCurrentSessionId] = useState(null)
+
+  // current workspace contents
   const [content, setContent] = useState(null)
-  const [analyzing, setAnalyzing] = useState(false)
-  const [error, setError] = useState('')
+  const [initialNotes, setInitialNotes] = useState('')
+  const [initialMessages, setInitialMessages] = useState([])
   const [tab, setTab] = useState('notes')
 
-  const analyzed = Boolean(content)
+  // transient status
+  const [analyzing, setAnalyzing] = useState(false)
+  const [error, setError] = useState('')
+  const [booting, setBooting] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [sessionLoading, setSessionLoading] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  const bootstrappedRef = useRef(false)
+
+  const resetPanels = () => {
+    setContent(null)
+    setInitialNotes('')
+    setInitialMessages([])
+    setTab('notes')
+    setError('')
+  }
+
+  const hydrate = (detail) => {
+    setContent(detail.video || null)
+    setInitialNotes(detail.notes_markdown || '')
+    setInitialMessages(mapMessages(detail.messages))
+    setTab('notes')
+    setError('')
+  }
+
+  const refreshSessions = async () => {
+    try {
+      const list = await listSessions()
+      if (Array.isArray(list)) setSessions(list)
+      return list
+    } catch {
+      return null
+    }
+  }
+
+  // Bootstrap once per login: load the session list, then open the most recent
+  // (or create a fresh one for a brand-new account).
+  useEffect(() => {
+    if (!user) {
+      bootstrappedRef.current = false
+      setSessions([])
+      setCurrentSessionId(null)
+      resetPanels()
+      return
+    }
+    if (bootstrappedRef.current) return
+    bootstrappedRef.current = true
+    ;(async () => {
+      setBooting(true)
+      try {
+        const list = await listSessions()
+        if (Array.isArray(list) && list.length > 0) {
+          setSessions(list)
+          const detail = await getSession(list[0].id)
+          setCurrentSessionId(list[0].id)
+          hydrate(detail)
+        } else {
+          const created = await createSession()
+          setSessions([created])
+          setCurrentSessionId(created.id)
+          resetPanels()
+        }
+      } catch (e) {
+        setError(e.message)
+      } finally {
+        setBooting(false)
+      }
+    })()
+  }, [user])
+
+  const selectSession = async (id) => {
+    if (!id || id === currentSessionId) {
+      setSidebarOpen(false)
+      return
+    }
+    setSidebarOpen(false)
+    setSessionLoading(true)
+    setError('')
+    try {
+      const detail = await getSession(id)
+      setCurrentSessionId(id)
+      hydrate(detail)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSessionLoading(false)
+    }
+  }
+
+  const handleNewChat = async () => {
+    if (creating) return
+    setCreating(true)
+    setError('')
+    try {
+      const created = await createSession()
+      setCurrentSessionId(created.id)
+      resetPanels()
+      setSidebarOpen(false)
+      await refreshSessions()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setCreating(false)
+    }
+  }
 
   const handleAnalyze = async (url, lang) => {
+    if (!currentSessionId) return
     setAnalyzing(true)
     setError('')
     try {
-      const res = await analyzeVideo(url, lang)
+      const res = await analyzeVideo(url, lang, currentSessionId)
       setContent(res?.content || null)
+      // Fresh video → no saved notes and no chat history yet.
+      setInitialNotes('')
+      setInitialMessages([])
       setTab('notes')
+      await refreshSessions() // title becomes the video id, has_video flips on
     } catch (e) {
       setError(e.message)
-      setContent(null) 
+      setContent(null)
     } finally {
       setAnalyzing(false)
     }
   }
 
+  const handleRename = async (id, title) => {
+    setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, title } : s)))
+    try {
+      await renameSession(id, title)
+    } catch (e) {
+      setError(e.message)
+      await refreshSessions()
+    }
+  }
+
+  const handleDelete = async (id) => {
+    try {
+      await deleteSession(id)
+      const list = (await refreshSessions()) || []
+      if (id === currentSessionId) {
+        if (list.length > 0) {
+          await selectSession(list[0].id)
+        } else {
+          const created = await createSession()
+          setCurrentSessionId(created.id)
+          resetPanels()
+          await refreshSessions()
+        }
+      }
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
+  // --- render gates ----------------------------------------------------------
+  if (authLoading) {
+    return (
+      <div className="fullscreen-loader">
+        <span className="spinner" aria-hidden="true" />
+        <span>Loading…</span>
+      </div>
+    )
+  }
+
+  if (!user) return <AuthScreen />
+
+  const analyzed = Boolean(content)
   const commentCount = Array.isArray(content?.comments) ? content.comments.length : 0
+  const currentTitle =
+    sessions.find((s) => s.id === currentSessionId)?.title || 'New chat'
 
   return (
-    <div className="app">
-      <header className="topbar">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true">▶</span>
-          <span className="brand-name">
-            Tube<span className="brand-accent">AI</span>
+    <div className="layout">
+      <Sidebar
+        sessions={sessions}
+        currentSessionId={currentSessionId}
+        onSelect={selectSession}
+        onNewChat={handleNewChat}
+        onRename={handleRename}
+        onDelete={handleDelete}
+        user={user}
+        onLogout={logout}
+        creating={creating}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
+
+      <div className="content-col">
+        <header className="content-head">
+          <button
+            type="button"
+            className="menu-toggle"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Open menu"
+          >
+            ☰
+          </button>
+          <span className="content-title" title={currentTitle}>
+            {currentTitle}
           </span>
-        </div>
-        <span className={`status-pill ${analyzed ? 'status-ready' : 'status-locked'}`}>
-          <span className="status-dot" aria-hidden="true" />
-          {analyzed ? 'Video loaded' : 'Awaiting a URL'}
-        </span>
-      </header>
+          <span className={`status-pill ${analyzed ? 'status-ready' : 'status-locked'}`}>
+            <span className="status-dot" aria-hidden="true" />
+            {analyzed ? 'Video loaded' : 'Awaiting a URL'}
+          </span>
+        </header>
 
-      <main className="main">
-        <section className="intro">
-          <h1 className="intro-title">
-            Turn any YouTube video into <span className="grad">notes, sentiment &amp; answers</span>
-          </h1>
-          <p className="intro-sub">
-            Paste a link, analyze it once, then generate study notes, gauge how
-            the audience felt, and chat with the transcript.
-          </p>
-          <UrlBar onAnalyze={handleAnalyze} loading={analyzing} />
-          {error && (
-            <div className="intro-error">
-              <Callout tone="error" title="Analysis failed">
-                {error}
-              </Callout>
+        <main className="main">
+          {booting || sessionLoading ? (
+            <div className="session-loading">
+              <span className="spinner" aria-hidden="true" />
+              <span>{booting ? 'Loading your chats…' : 'Opening chat…'}</span>
             </div>
+          ) : !analyzed ? (
+            <section className="intro">
+              <h1 className="intro-title">
+                Turn any YouTube video into{' '}
+                <span className="grad">notes, sentiment &amp; answers</span>
+              </h1>
+              <p className="intro-sub">
+                Paste a link, analyze it once, then generate study notes, gauge how
+                the audience felt, and chat with the transcript. This chat saves your
+                work — reopen it any time.
+              </p>
+              <UrlBar onAnalyze={handleAnalyze} loading={analyzing} />
+              {error && (
+                <div className="intro-error">
+                  <Callout tone="error" title="Analysis failed">
+                    {error}
+                  </Callout>
+                </div>
+              )}
+            </section>
+          ) : (
+            <>
+              <section className="loaded">
+                <VideoCard content={content} />
+              </section>
+
+              {error && (
+                <div className="intro-error">
+                  <Callout tone="error" title="Something went wrong">
+                    {error}
+                  </Callout>
+                </div>
+              )}
+
+              <section className="workspace">
+                <nav className="tabs" aria-label="Tools">
+                  {TABS.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      className={`tab ${tab === t.id ? 'tab-active' : ''}`}
+                      onClick={() => setTab(t.id)}
+                      aria-current={tab === t.id ? 'page' : undefined}
+                    >
+                      <span className="tab-icon" aria-hidden="true">{t.icon}</span>
+                      {t.label}
+                    </button>
+                  ))}
+                </nav>
+
+                {/* All three panes stay mounted so switching tabs never drops a
+                    running notes stream or the current chat — they're keyed by
+                    session so switching chats reseeds them from saved state. */}
+                <div className="panel">
+                  <div style={{ display: tab === 'notes' ? undefined : 'none' }}>
+                    <NotesView
+                      key={`notes-${currentSessionId}`}
+                      sessionId={currentSessionId}
+                      initialNotes={initialNotes}
+                    />
+                  </div>
+                  <div style={{ display: tab === 'sentiment' ? undefined : 'none' }}>
+                    <SentimentView
+                      key={`sent-${currentSessionId}`}
+                      sessionId={currentSessionId}
+                      commentCount={commentCount}
+                    />
+                  </div>
+                  <div style={{ display: tab === 'chat' ? undefined : 'none' }}>
+                    <ChatView
+                      key={`chat-${currentSessionId}`}
+                      sessionId={currentSessionId}
+                      initialMessages={initialMessages}
+                    />
+                  </div>
+                </div>
+              </section>
+            </>
           )}
-        </section>
+        </main>
 
-        {analyzed && (
-          <section className="loaded">
-            <VideoCard content={content} />
-          </section>
-        )}
-
-        <section className="workspace">
-          <nav className="tabs" aria-label="Tools">
-            {TABS.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                className={`tab ${tab === t.id ? 'tab-active' : ''}`}
-                onClick={() => setTab(t.id)}
-                disabled={!analyzed}
-                aria-current={tab === t.id ? 'page' : undefined}
-              >
-                <span className="tab-icon" aria-hidden="true">{t.icon}</span>
-                {t.label}
-                {!analyzed && (
-                  <span className="tab-lock" aria-hidden="true">🔒</span>
-                )}
-              </button>
-            ))}
-          </nav>
-
-          <div className="panel">
-            {!analyzed ? (
-              <div className="locked">
-                <div className="locked-icon" aria-hidden="true">🔒</div>
-                <h2 className="locked-title">Paste a URL to unlock the tools</h2>
-                <p className="locked-sub">
-                  Notes, sentiment, and chat all read from the video you analyze.
-                  Until a video is loaded, these actions stay disabled — so no
-                  request runs against an empty backend.
-                </p>
-                <ul className="locked-steps">
-                  <li><span className="step-n">1</span> Paste a YouTube URL above</li>
-                  <li><span className="step-n">2</span> Hit <strong>Analyze</strong> to load its transcript &amp; comments</li>
-                  <li><span className="step-n">3</span> Generate notes, sentiment &amp; chat</li>
-                </ul>
-              </div>
-            ) : (
-              <>
-                {tab === 'notes' && <NotesView />}
-                {tab === 'sentiment' && <SentimentView commentCount={commentCount} />}
-                {tab === 'chat' && <ChatView />}
-              </>
-            )}
-          </div>
-        </section>
-      </main>
-
-      <footer className="footer">
-        <span>TubeAI · FastAPI + React</span>
-      </footer>
+        <footer className="footer">
+          <span>TubeAI · FastAPI + React</span>
+        </footer>
+      </div>
     </div>
   )
 }

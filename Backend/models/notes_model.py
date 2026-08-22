@@ -33,7 +33,7 @@ class Plan(BaseModel):
 class EvidenceItem(BaseModel):
     title: str
     url: str
-    published_at: Optional[str] = None  # ISO "YYYY-MM-DD" preferred
+    published_at: Optional[str] = None  
     snippet: Optional[str] = None
     source: Optional[str] = None
 
@@ -50,7 +50,6 @@ class EvidencePack(BaseModel):
     evidence: List[EvidenceItem] = Field(default_factory=list)
 
 
-# ---- Image planning schema (ported from your image flow) ----
 class ImageSpec(BaseModel):
     placeholder: str = Field(..., description="e.g. [[IMAGE_1]]")
     filename: str = Field(..., description="Save under images/, e.g. qkv_flow.png")
@@ -66,12 +65,7 @@ class GlobalImagePlan(BaseModel):
     images: List[ImageSpec] = Field(default_factory=list)
 
 
-# ---- Lean image planning schema ----
-# Unlike GlobalImagePlan, this does NOT ask the model to echo the whole blog back
-# (md_with_placeholders). Re-emitting a 3-5k word document just to insert 3 markers
-# is one of the biggest latency costs in the notes pipeline. Instead the model only
-# picks WHICH section each image illustrates (by index) and describes it; the
-# placeholders are inserted in Python, so the notes text is preserved byte-for-byte.
+
 class ImagePlanItem(BaseModel):
     section_index: int = Field(
         ...,
@@ -93,21 +87,16 @@ class ImagePlan(BaseModel):
 class State(TypedDict):
     topic: str
 
-    # routing / research
     mode: str
     needs_research: bool
     queries: List[str]
     evidence: List[EvidenceItem]
     plan: Optional[Plan]
 
-    # recency
     as_of: str
     recency_days: int
 
-    # workers
-    sections: Annotated[List[tuple[int, str]], operator.add]  # (task_id, section_md)
-
-    # reducer/image
+    sections: Annotated[List[tuple[int, str]], operator.add]  
     merged_md: str
     md_with_placeholders: str
     image_specs: List[dict]

@@ -31,9 +31,7 @@ def inhanceByai(results) -> str:
         HumanMessage(content=f"Sentiment analysis result:\n{results}"),
     ]
 
-    # Prefer the structured output, but the model sometimes returns prose that
-    # can't be coerced into ChatResponseModel (raises OUTPUT_PARSING_FAILURE).
-    # Fall back to a plain-text completion so the endpoint never 500s.
+    
     try:
         ai_message = structured_llm.invoke(messages)
         return ai_message.feedback

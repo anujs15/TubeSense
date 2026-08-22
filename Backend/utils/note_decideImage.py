@@ -9,6 +9,8 @@ from concurrent.futures import ThreadPoolExecutor
 import requests
 from dotenv import load_dotenv
 
+from services.cloudinary_service import upload_image_bytes
+
 load_dotenv()
 
 
@@ -142,13 +144,6 @@ def _cf_generate_image_bytes(prompt: str) -> bytes:
     return resp.content
 
 
-def _safe_slug(title: str) -> str:
-    s = title.strip().lower()
-    s = re.sub(r"[^a-z0-9 _-]+", "", s)
-    s = re.sub(r"\s+", "_", s).strip("_")
-    return s or "blog"
-
-
 def _fail_block(spec: dict, err: Exception) -> str:
     """Graceful fallback so a failed image never breaks the document."""
     return (
@@ -166,50 +161,38 @@ def generate_and_place_images(state: State) -> dict:
     md = state.get("md_with_placeholders") or state["merged_md"]
     image_specs = state.get("image_specs", []) or []
 
-    # If no images requested, just write merged markdown
+   
     if not image_specs:
-        filename = f"{_safe_slug(plan.blog_title)}.md"
-        Path(filename).write_text(md, encoding="utf-8")
         return {"final": md}
-
-    images_dir = Path("images")
-    images_dir.mkdir(exist_ok=True)
-
-    
-    def _out_path(spec: dict) -> Path:
-        return images_dir / (Path(spec["filename"]).name or "image.png")
 
     
     def _fetch(spec: dict):
-        if _out_path(spec).exists():
-            return spec, None, None  
         try:
             return spec, _cf_generate_image_bytes(spec["prompt"]), None
-        except Exception as e:  
+        except Exception as e:
             return spec, None, e
 
     with ThreadPoolExecutor(max_workers=max(1, len(image_specs))) as ex:
         results = list(ex.map(_fetch, image_specs))
 
-    
     for spec, img_bytes, err in results:
         placeholder = spec["placeholder"]
-        out_path = _out_path(spec)
 
         if err is not None:
             md = md.replace(placeholder, _fail_block(spec, err))
             continue
 
-        if img_bytes is not None:
-            try:
-                out_path.write_bytes(img_bytes)
-            except Exception as e:
-                md = md.replace(placeholder, _fail_block(spec, e))
-                continue
+        try:
+            url = upload_image_bytes(
+                img_bytes,
+                filename=Path(spec["filename"]).name,
+                prompt=spec.get("prompt", ""),
+            )
+        except Exception as e:
+            md = md.replace(placeholder, _fail_block(spec, e))
+            continue
 
-        img_md = f"![{spec['alt']}](images/{out_path.name})\n*{spec['caption']}*"
+        img_md = f"![{spec['alt']}]({url})\n*{spec['caption']}*"
         md = md.replace(placeholder, img_md)
 
-    filename = f"{_safe_slug(plan.blog_title)}.md"
-    Path(filename).write_text(md, encoding="utf-8")
     return {"final": md}
